@@ -62,7 +62,7 @@ summary{cursor:pointer;font-weight:750}.notice{border-left:3px solid var(--warn)
 <body>
 <header>
 <div class="head">
-  <div class="brand"><div class="logo">四</div><div>四宮 管理アプリ <span class="ver">v1.0</span></div></div>
+  <div class="brand"><div class="logo">四</div><div>四宮 管理アプリ <span class="ver">v1.1</span></div></div>
   <button class="btn" id="installBtn" style="display:none">インストール</button>
 </div>
 </header>
@@ -148,6 +148,34 @@ summary{cursor:pointer;font-weight:750}.notice{border-left:3px solid var(--warn)
     </div>
     <label style="margin-top:9px">メモ</label><input id="uMemo" type="text" placeholder="焼津 / 静岡、クエストなど">
     <button class="btn primary wide" id="uAdd">Uber記録を追加</button>
+  </div>
+
+
+  <div class="card">
+    <h3>スプレッドシート / CSV 取り込み</h3>
+    <div class="muted">GoogleスプレッドシートのUberデータをまとめて取り込めます。CSVファイル、貼り付け、公開CSV URLの3方式に対応。</div>
+
+    <div class="form2" style="margin-top:10px">
+      <div>
+        <label>CSVファイル</label>
+        <input id="sheetCsvFile" type="file" accept=".csv,text/csv">
+      </div>
+      <div>
+        <label>公開CSV URL（任意）</label>
+        <input id="sheetCsvUrl" type="url" placeholder="https://docs.google.com/.../export?format=csv">
+      </div>
+    </div>
+
+    <label style="margin-top:10px">または、スプレッドシートからコピーして貼り付け</label>
+    <textarea id="sheetPaste" rows="6" placeholder="1行目に見出しを含めて貼り付け。例：日付　売上　件数　稼働時間　走行距離"></textarea>
+
+    <div class="row wrap" style="margin-top:9px">
+      <button class="btn" id="sheetPreview">読み込み確認</button>
+      <button class="btn primary" id="sheetImport">Uberへ取り込む</button>
+    </div>
+
+    <div id="sheetImportStatus" class="muted" style="margin-top:8px"></div>
+    <div id="sheetPreviewArea" class="scroll" style="margin-top:8px"></div>
   </div>
 
   <div class="grid3">
@@ -393,6 +421,8 @@ summary{cursor:pointer;font-weight:750}.notice{border-left:3px solid var(--warn)
       <div><label>車検資金目標</label><input id="sInspectTarget" type="number"></div>
       <div><label>車検資金現在</label><input id="sInspectCurrent" type="number"></div>
       <div><label>月の食費予算</label><input id="sFoodBudget" type="number"></div>
+      <div><label>UberスプレッドシートCSV URL</label><input id="sSheetUrl" type="url" placeholder="公開CSV URL"></div>
+      <div><label>起動時にUber同期</label><select id="sSheetAuto"><option value="false">しない</option><option value="true">する</option></select></div>
     </div>
     <button class="btn primary wide" id="settingsSave">設定保存</button>
   </div>
@@ -453,7 +483,7 @@ const categories=["食費","外食・Uber Eats","ガソリン","車","日用品"
 const incomeCats=["Uber","コーティング","売却","その他収入"];
 
 const DEF={
-  settings:{uberMin:45000,uberGood:50000,cashFloor:10000,inspectionTarget:150000,inspectionCurrent:0,foodBudget:31000},
+  settings:{uberMin:45000,uberGood:50000,cashFloor:10000,inspectionTarget:150000,inspectionCurrent:0,foodBudget:31000,sheetCsvUrl:"",sheetAuto:false},
   balance:{bank:22425,cash:0},
   budgets:{"食費":31000,"外食・Uber Eats":12000,"ガソリン":20000,"車":20000,"日用品":10000,"医療":10000,"サブスク":10130,"仕事":10000,"返済":30000,"娯楽":5000,"その他":10000},
   fixed:[
@@ -577,7 +607,7 @@ function render(){
   $("goalCards").innerHTML=D.goals.map(g=>`<div class="card"><div class="row"><b>${g.name}</b><span>${Math.round(pct(g.current,g.target))}%</span></div><div class="bar"><i style="width:${pct(g.current,g.target)}%"></i></div><div class="row" style="margin-top:7px"><span class="muted">${Number(g.current||0).toLocaleString()} / ${Number(g.target||0).toLocaleString()} ${g.unit||""}${g.deadline?" / "+g.deadline:""}</span><button class="btn bad" onclick="delGoal('${g.id}')">削除</button></div><div class="muted">${g.memo||""}</div></div>`).join("");
 
   // Settings
-  $("sUberMin").value=D.settings.uberMin;$("sUberGood").value=D.settings.uberGood;$("sCashFloor").value=D.settings.cashFloor;$("sInspectTarget").value=D.settings.inspectionTarget;$("sInspectCurrent").value=D.settings.inspectionCurrent;$("sFoodBudget").value=D.settings.foodBudget;
+  $("sUberMin").value=D.settings.uberMin;$("sUberGood").value=D.settings.uberGood;$("sCashFloor").value=D.settings.cashFloor;$("sInspectTarget").value=D.settings.inspectionTarget;$("sInspectCurrent").value=D.settings.inspectionCurrent;$("sFoodBudget").value=D.settings.foodBudget;$("sSheetUrl").value=D.settings.sheetCsvUrl||"";$("sSheetAuto").value=String(!!D.settings.sheetAuto);$("sheetCsvUrl").value=D.settings.sheetCsvUrl||"";
 
   renderReport();
 }
@@ -612,6 +642,174 @@ $("txType").onchange=()=>fillCats($("txCategory"),$("txType").value);
 $("uAdd").onclick=()=>{D.uber.push({id:uid(),date:$("uDate").value,sales:+$("uSales").value||0,trips:+$("uTrips").value||0,hours:+$("uHours").value||0,km:+$("uKm").value||0,fuel:+$("uFuel").value||0,memo:$("uMemo").value});["uSales","uTrips","uHours","uKm","uFuel","uMemo"].forEach(id=>$(id).value="");save();toast("Uber記録を追加")}
 window.delUber=id=>{D.uber=D.uber.filter(x=>x.id!==id);save()}
 $("uSearch").oninput=render;$("uCsv").onclick=()=>downloadCSV("Uber履歴.csv",[["日付","売上","件数","時間","km","ガソリン","メモ"],...D.uber.map(x=>[x.date,x.sales,x.trips,x.hours,x.km,x.fuel,x.memo])]);
+
+
+// Spreadsheet / CSV import
+let __sheetRows = [];
+
+function normalizeHeader(s){
+  return String(s||"").trim().toLowerCase()
+    .replace(/[ 　_\-\/（）()]/g,"")
+    .replace(/ｅａｒｎｉｎｇｓ/g,"earnings");
+}
+function parseDelimited(text){
+  text=String(text||"").replace(/^\uFEFF/,"").replace(/\r\n/g,"\n").replace(/\r/g,"\n");
+  // TSV paste is preferred when tabs exist.
+  if(text.includes("\t")){
+    return text.split("\n").filter(r=>r.trim()!=="").map(r=>r.split("\t").map(c=>c.trim()));
+  }
+  const rows=[];let row=[],cell="",q=false;
+  for(let i=0;i<text.length;i++){
+    const ch=text[i];
+    if(q){
+      if(ch==='"' && text[i+1]==='"'){cell+='"';i++}
+      else if(ch==='"'){q=false}
+      else cell+=ch;
+    }else{
+      if(ch==='"')q=true;
+      else if(ch===","){row.push(cell.trim());cell=""}
+      else if(ch==="\n"){row.push(cell.trim());if(row.some(x=>x!==""))rows.push(row);row=[];cell=""}
+      else cell+=ch;
+    }
+  }
+  row.push(cell.trim());if(row.some(x=>x!==""))rows.push(row);
+  return rows;
+}
+function num(v){
+  const s=String(v??"").replace(/[¥￥,\s円件kmKM]/g,"").replace(/[^\d.\-]/g,"");
+  const n=Number(s);return Number.isFinite(n)?n:0;
+}
+function hoursFrom(v){
+  const s=String(v??"").trim();
+  if(!s)return 0;
+  const hm=s.match(/(\d+)\s*時間(?:\s*(\d+)\s*分)?/);
+  if(hm)return Number(hm[1])+(Number(hm[2]||0)/60);
+  const colon=s.match(/^(\d{1,3}):(\d{1,2})(?::\d{1,2})?$/);
+  if(colon)return Number(colon[1])+Number(colon[2])/60;
+  const h=Number(s.replace(/[^\d.\-]/g,""));
+  return Number.isFinite(h)?h:0;
+}
+function dateFrom(v){
+  let s=String(v??"").trim();
+  if(!s)return "";
+  s=s.replace(/[年月.]/g,"/").replace(/日/g,"").replace(/-/g,"/");
+  let m=s.match(/^(20\d{2})\/(\d{1,2})\/(\d{1,2})$/);
+  if(m)return `${m[1]}-${String(m[2]).padStart(2,"0")}-${String(m[3]).padStart(2,"0")}`;
+  m=s.match(/^(\d{1,2})\/(\d{1,2})$/);
+  if(m){
+    const y=new Date().getFullYear();
+    return `${y}-${String(m[1]).padStart(2,"0")}-${String(m[2]).padStart(2,"0")}`;
+  }
+  // Week labels such as 9/14〜9/21 -> use first date
+  m=s.match(/(?:20(\d{2})\/)?(\d{1,2})\/(\d{1,2})\s*[〜~\-]/);
+  if(m){
+    const y=m[1]?2000+Number(m[1]):new Date().getFullYear();
+    return `${y}-${String(m[2]).padStart(2,"0")}-${String(m[3]).padStart(2,"0")}`;
+  }
+  return "";
+}
+function detectColumns(headers){
+  const h=headers.map(normalizeHeader);
+  const find=(names)=>h.findIndex(x=>names.some(n=>x===n||x.includes(n)));
+  return {
+    date:find(["日付","date","期間","週","稼働日"]),
+    sales:find(["売上","売上高","earnings","金額","報酬"]),
+    trips:find(["件数","配達件数","trip","trips","配達"]),
+    hours:find(["稼働時間","オンライン時間","online","時間","稼働"]),
+    km:find(["走行距離","距離","km"]),
+    fuel:find(["ガソリン","燃料費","fuel"]),
+    memo:find(["メモ","備考","エリア","memo"])
+  };
+}
+function buildUberImport(rows){
+  if(!rows || rows.length<2)return {items:[],headers:[],cols:{}};
+  const headers=rows[0], cols=detectColumns(headers), items=[];
+  for(const r of rows.slice(1)){
+    const date=cols.date>=0?dateFrom(r[cols.date]):"";
+    const sales=cols.sales>=0?num(r[cols.sales]):0;
+    if(!date || !sales)continue;
+    items.push({
+      id:uid(),
+      date,
+      sales,
+      trips:cols.trips>=0?num(r[cols.trips]):0,
+      hours:cols.hours>=0?hoursFrom(r[cols.hours]):0,
+      km:cols.km>=0?num(r[cols.km]):0,
+      fuel:cols.fuel>=0?num(r[cols.fuel]):0,
+      memo:cols.memo>=0?String(r[cols.memo]||""):"スプレッドシート取込"
+    });
+  }
+  return {items,headers,cols};
+}
+async function readSheetSource(){
+  const file=$("sheetCsvFile").files?.[0];
+  const pasted=$("sheetPaste").value.trim();
+  const url=$("sheetCsvUrl").value.trim();
+  if(file)return await file.text();
+  if(pasted)return pasted;
+  if(url){
+    const res=await fetch(url,{cache:"no-store"});
+    if(!res.ok)throw new Error("CSV URLを取得できません");
+    return await res.text();
+  }
+  throw new Error("CSVファイル、貼り付け、URLのどれかを指定してください");
+}
+function showSheetPreview(result){
+  __sheetRows=result.items;
+  const c=result.cols, names={date:"日付",sales:"売上",trips:"件数",hours:"稼働時間",km:"走行距離",fuel:"ガソリン",memo:"メモ"};
+  const detected=Object.entries(c).filter(([k,v])=>v>=0).map(([k,v])=>`${names[k]}←${result.headers[v]}`).join(" / ");
+  $("sheetImportStatus").textContent=`読込候補 ${result.items.length}件。${detected||"列を判定できませんでした"}`;
+  $("sheetPreviewArea").innerHTML=result.items.length?`<table><thead><tr><th>日付</th><th>売上</th><th>件数</th><th>時間</th><th>km</th></tr></thead><tbody>${result.items.slice(0,10).map(x=>`<tr><td>${x.date}</td><td>${yen(x.sales)}</td><td>${x.trips}</td><td>${x.hours.toFixed(2)}</td><td>${x.km}</td></tr>`).join("")}</tbody></table>${result.items.length>10?'<div class="muted" style="margin-top:6px">先頭10件を表示</div>':""}`:"<div class='muted'>取り込める行がありません。見出し名を確認してください。</div>";
+}
+$("sheetPreview").onclick=async()=>{
+  try{
+    $("sheetImportStatus").textContent="読み込み中…";
+    const text=await readSheetSource();
+    showSheetPreview(buildUberImport(parseDelimited(text)));
+  }catch(e){$("sheetImportStatus").textContent=e.message}
+};
+$("sheetImport").onclick=async()=>{
+  try{
+    if(!__sheetRows.length){
+      const text=await readSheetSource();
+      showSheetPreview(buildUberImport(parseDelimited(text)));
+    }
+    if(!__sheetRows.length)return alert("取り込めるデータがありません");
+    let added=0,updated=0;
+    for(const x of __sheetRows){
+      // Same date + same sales is treated as duplicate. Same date only updates when existing record was imported.
+      const exact=D.uber.find(y=>y.date===x.date && Number(y.sales)===Number(x.sales));
+      if(exact)continue;
+      const prev=D.uber.find(y=>y.date===x.date && (y.memo||"").includes("スプレッドシート取込"));
+      if(prev){Object.assign(prev,x,{id:prev.id});updated++}
+      else{D.uber.push(x);added++}
+    }
+    save();
+    toast(`Uber同期: 追加${added}件 / 更新${updated}件`);
+    $("sheetImportStatus").textContent=`完了：追加 ${added}件、更新 ${updated}件。重複はスキップしました。`;
+    __sheetRows=[];
+  }catch(e){$("sheetImportStatus").textContent=e.message}
+};
+async function autoSyncSheet(){
+  if(!D.settings.sheetAuto || !D.settings.sheetCsvUrl)return;
+  try{
+    $("sheetCsvUrl").value=D.settings.sheetCsvUrl;
+    const res=await fetch(D.settings.sheetCsvUrl,{cache:"no-store"});
+    if(!res.ok)return;
+    const result=buildUberImport(parseDelimited(await res.text()));
+    let changed=false;
+    for(const x of result.items){
+      const exact=D.uber.find(y=>y.date===x.date && Number(y.sales)===Number(x.sales));
+      if(exact)continue;
+      const prev=D.uber.find(y=>y.date===x.date && (y.memo||"").includes("スプレッドシート取込"));
+      if(prev)Object.assign(prev,x,{id:prev.id});
+      else D.uber.push(x);
+      changed=true;
+    }
+    if(changed){localStorage.setItem("shinomiya_v1",JSON.stringify(D));render()}
+  }catch(e){}
+}
+
 
 // Coating
 $("cAdd").onclick=()=>{D.coating.push({id:uid(),date:$("cDate").value,revenue:+$("cRevenue").value||0,cost:+$("cCost").value||0,customer:$("cCustomer").value,status:$("cStatus").value,memo:$("cMemo").value});["cRevenue","cCost","cCustomer","cMemo"].forEach(id=>$(id).value="");save();toast("コーティング仕事を追加")}
@@ -658,7 +856,7 @@ $("gAdd").onclick=()=>{D.goals.push({id:uid(),name:$("gName").value,target:+$("g
 window.delGoal=id=>{if(!["inspection","uberweek"].includes(id))D.goals=D.goals.filter(x=>x.id!==id);save()}
 
 // Settings & reports
-$("settingsSave").onclick=()=>{D.settings.uberMin=+$("sUberMin").value||0;D.settings.uberGood=+$("sUberGood").value||0;D.settings.cashFloor=+$("sCashFloor").value||0;D.settings.inspectionTarget=+$("sInspectTarget").value||0;D.settings.inspectionCurrent=+$("sInspectCurrent").value||0;D.settings.foodBudget=+$("sFoodBudget").value||0;D.budgets["食費"]=D.settings.foodBudget;save();toast("設定保存")}
+$("settingsSave").onclick=()=>{D.settings.uberMin=+$("sUberMin").value||0;D.settings.uberGood=+$("sUberGood").value||0;D.settings.cashFloor=+$("sCashFloor").value||0;D.settings.inspectionTarget=+$("sInspectTarget").value||0;D.settings.inspectionCurrent=+$("sInspectCurrent").value||0;D.settings.foodBudget=+$("sFoodBudget").value||0;D.settings.sheetCsvUrl=$("sSheetUrl").value.trim();D.settings.sheetAuto=$("sSheetAuto").value==="true";D.budgets["食費"]=D.settings.foodBudget;save();toast("設定保存")}
 $("repRefresh").onclick=render;
 function backupJSON(){download(`四宮管理バックアップ_${today()}.json`,JSON.stringify(D,null,2),"application/json")}
 $("backupBtn").onclick=backupJSON;$("restoreBtn").onclick=()=>$("restoreFile").click();$("restoreFile").onchange=async()=>{try{D=JSON.parse(await $("restoreFile").files[0].text());localStorage.setItem("shinomiya_v1",JSON.stringify(D));render();toast("復元完了")}catch(e){alert("復元失敗")}}
@@ -673,6 +871,7 @@ $("installBtn").onclick=async()=>{if(!deferredPrompt)return;deferredPrompt.promp
 if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
 
 render();
+setTimeout(autoSyncSheet,300);
 </script>
 </body>
 </html>
