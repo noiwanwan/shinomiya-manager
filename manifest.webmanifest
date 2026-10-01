@@ -1,0 +1,23 @@
+{
+  "name": "四宮 管理アプリ",
+  "short_name": "四宮管理",
+  "description": "Uber・家計・借入・レシートOCR・車両整備・コーティング管理",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0d0f14",
+  "theme_color": "#6f2639",
+  "lang": "ja",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
